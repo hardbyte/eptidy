@@ -1,5 +1,4 @@
 #!/usr/bin/python
-
 import urllib
 import re
 import os.path as osp
@@ -33,7 +32,6 @@ shows = {
 	'Heroes':'0813715',
 	'The Big Bang Theory':'0898266'
 	#evryone add their fav!
-#family guy, futurerama, mythbusters
 }
 
 class eptidy:
@@ -177,7 +175,7 @@ class mainFrame(wx.Frame):
 		self.Bind(wx.EVT_BUTTON, self.handleProcess, self.button_3)
 		self.Bind(wx.EVT_BUTTON, self.handleBrowse, self.button_1)
 		self.Bind(wx.EVT_BUTTON, self.handleRename, self.button_4)
-
+		
 		#important shit happens here
 		self.e = eptidy()
 	
@@ -236,19 +234,10 @@ class mainFrame(wx.Frame):
 		self.text_ctrl_3.SetInsertionPoint(0)
 		self.text_ctrl_3.WriteText("\n".join([x[0]+" => "+x[1] for x in self.fileMap]))
 	
-	def victory(self):
-		dlg = wx.Dialog(self,"All done!")
-		if dlg.ShowModal() == wx.ID_OK:
-			pass
-		dlg.Destroy()
-
 	def handleRename(self,event):
 		for old,new in self.fileMap:
 			if old != new:
 				os.renames(old,new)
-		victory()
-
-
 
 
 class gui(wx.App):
