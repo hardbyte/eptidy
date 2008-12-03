@@ -130,6 +130,8 @@ class mainFrame(wx.Frame):
 		self.checkbox_1.SetValue(1)
 		self.label_2 = wx.StaticText(self.panel_1, -1, "Naming Pattern:")
 		self.text_ctrl_2 = wx.TextCtrl(self.panel_1, -1, "%t %sx%e - %n")
+		nptt = wx.ToolTip("%t : Show Title\n%n : Episode Name\n%s : Season Number\n%0s : Zero-padded Season Number\n%e : Episode Number\n%0e : Zero-padded Episode Number\n\nSort into folders based at path entered above with: %t/Season %s/%t - %n\n\nSort into absolute folders: /home/username/videos/%t/Season %s/%t - %n\n")
+		self.text_ctrl_2.SetToolTip(nptt)
 		self.button_2 = wx.Button(self.panel_1, -1, "Scan")
 		self.button_3 = wx.Button(self.panel_1, -1, "Process")
 		self.button_4 = wx.Button(self.panel_1, -1, "Rename Files")
