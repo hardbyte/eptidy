@@ -1,9 +1,11 @@
 #!/usr/bin/env python
-# Installer for eptidy...
+# Installer and installer maker for eptidy...
 # Make a windows executable with: python setup.py bdist_wininst --install-script linking.py
+# Make a standalone windows exe with: python setup.py py2exe
 # Make a debian or rpm in a similar way.
 
 from distutils.core import setup
+import py2exe
 
 setup(name = 'eptidy',
 	  version = '0.2',
@@ -18,4 +20,13 @@ setup(name = 'eptidy',
 	  download_url = 'http://code.google.com/p/eptidy/downloads/list',
 	  scripts=['linking.py'], 
 	  py_modules = ['eptidy'],
+	  options = {
+	  	"py2exe": {
+	  		"compressed": 1, 
+	  		"optimize": 2, 
+	  		"ascii": 1, 
+	  		"bundle_files": 1},
+	  		},
+	  zipfile = None,
+	  windows = ["eptidy.py"],
 	  )
