@@ -9,7 +9,8 @@ TODO:
 * easter eggs
 * pack/distro
 * port to a universal gui like tk :-P
-* icon for prog + bmp for installer
+* icon for standalone + python based program 
+* bmp for installer
 * windows uninstaller in linking.py
 * SMALL standalone version
 """
