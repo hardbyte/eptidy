@@ -1,4 +1,18 @@
 #!/usr/bin/python
+"""
+Eptidy - Tidy up all your tv episodes
+
+TODO: 
+* download cache?
+* progress bar (with cancel button)
+* windows hidden dirs should be ignored
+* easter eggs
+* pack/distro
+* port to a universal gui like tk :-P
+* icon for prog + bmp for installer
+* windows uninstaller in linking.py
+* SMALL standalone version
+"""
 import urllib
 import re
 import os.path as osp
@@ -34,9 +48,17 @@ shows = {
 	#evryone add their fav!
 }
 
-class eptidy:
+class Eptidy:
 	"""
-	DOC STRINGS!!! man you're anal I know :-P
+	The standalone eptidy class.
+	
+	Usage:
+	
+	>>> e = Eptidy()
+	>>> files = ["house s1e2.mpg", "scubs 05.02.avi"]
+	>>> e.identifyFiles(files)
+	(['house s1e2.mpg', 'scubs 05.02.avi'], [('House', None), ('0412142', None)])
+	
 	"""
 	imdbBaseAddress = "http://www.imdb.com/title/tt"
 	imdbData = {} # filled by getEpName
@@ -104,8 +126,12 @@ class eptidy:
 			try:
 				u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes')
 			except Exception, e:
-				print "Internet not available from python\n%s" % e
-				raise SystemExit
+				try:
+					#try work proxy
+					u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes', proxies={'http':'http://proxyhost.tait.co.nz'})
+				except Exception, e:
+					print "Internet not available from python. Are you behind a proxy?\n%s" % e
+					raise SystemExit
 			# get big string of html page
 			self.imdbData[imdbId] = ''
 			for line in u.readlines():
@@ -130,7 +156,7 @@ class mainFrame(wx.Frame):
 		self.checkbox_1.SetValue(1)
 		self.label_2 = wx.StaticText(self.panel_1, -1, "Naming Pattern:")
 		self.text_ctrl_2 = wx.TextCtrl(self.panel_1, -1, "%t %sx%e - %n")
-		nptt = wx.ToolTip("%t : Show Title\n%n : Episode Name\n%s : Season Number\n%0s : Zero-padded Season Number\n%e : Episode Number\n%0e : Zero-padded Episode Number\n\nSort into folders based at path entered above with: %t/Season %s/%t - %n\n\nSort into absolute folders: /home/username/videos/%t/Season %s/%t - %n\n")
+		nptt = wx.ToolTip("%t : Show Title\n%n : Episode Name\n%s : Season Number\n%0s : Zero-padded Season Number\n%e : Episode Number\n%0e : Zero-padded Episode Number")
 		self.text_ctrl_2.SetToolTip(nptt)
 		self.button_2 = wx.Button(self.panel_1, -1, "Scan")
 		self.button_3 = wx.Button(self.panel_1, -1, "Process")
@@ -140,6 +166,7 @@ class mainFrame(wx.Frame):
 		self.text_ctrl_3.SetEditable(False)
 		self.SetTitle("Episode Renamer")
 		self.SetSize((650, 400))
+		self.status = self.CreateStatusBar()
 		sizer_1 = wx.BoxSizer(wx.HORIZONTAL)
 		sizer_2 = wx.BoxSizer(wx.VERTICAL)
 		sizer_6 = wx.BoxSizer(wx.HORIZONTAL)
@@ -179,7 +206,8 @@ class mainFrame(wx.Frame):
 		self.Bind(wx.EVT_BUTTON, self.handleRename, self.button_4)
 		
 		#important shit happens here
-		self.e = eptidy()
+		self.e = Eptidy()
+		self.status.SetStatusText("Ready")
 	
 	def handleBrowse(self,event):
 		"""
@@ -200,22 +228,27 @@ class mainFrame(wx.Frame):
 		"""
 		p = self.text_ctrl_1.GetValue();
 		if osp.isdir(p):
+			self.status.SetStatusText("Scanning...")
 			extensions = ['.mp4','.avi','.mpg','.divx','.mkv','.wmv']
-			files = []
-			for (r,d,f) in os.walk(p):
-				# don't scan hidden dirs,(note to self) is there a way we can get it to ask windows if a dir is hidden? - It'd be a stat type command, no?
-				[d.remove(a) for a in d if a.startswith('.')]
-				files += [osp.join(r,a) for a in f if os.path.splitext(a)[1].lower() in extensions]
+			if self.checkbox_1.GetValue() == True:
+				files = []
+				for (r,d,f) in os.walk(p):
+					# don't scan hidden dirs,(note to self) is there a way we can get it to ask windows if a dir is hidden? - It'd be a stat type command, no?
+					[d.remove(a) for a in d if a.startswith('.')]
+					files += [osp.join(r,a) for a in f if os.path.splitext(a)[1].lower() in extensions]
+			else:
+				files = [a for a in os.listdir(p) if os.path.splitext(a)[1].lower() in extensions]
 			d = self.e.identifyFiles(files)
 			self.doFiles = [z for z in zip(d[0],*d[1]) if not None in z]
 			self.text_ctrl_3.Remove(0,self.text_ctrl_3.GetLastPosition())
 			self.text_ctrl_3.SetInsertionPoint(0)
-			self.text_ctrl_3.WriteText('\n'.join(zip(*self.doFiles)[0]))
-
+			if self.doFiles: self.text_ctrl_3.WriteText('\n'.join(zip(*self.doFiles)[0]))
+			self.status.SetStatusText("Ready")
 		else:
 			print "Invalid path"
 		
 	def handleProcess(self,event):
+		self.status.SetStatusText("Processing...")
 		namePattern = self.text_ctrl_2.GetValue()
 		preFiles = self.e.parseFiles(self.doFiles)
 		inFiles = zip(*self.doFiles)[0]
@@ -223,8 +256,13 @@ class mainFrame(wx.Frame):
 		for file in enumerate(preFiles):
 			n = namePattern
 			# Zero padding for season and episode numbers
-			n = n.replace('%0s','0%s') if int(file[1][2]) < 10 else n.replace('%0s','%s')
-			n = n.replace('%0e','0%e') if int(file[1][3]) < 10 else n.replace('%0e','%e')
+			# Doesn't work in python 2.4...
+			#n = n.replace('%0s','0%s') if int(file[1][2]) < 10 else n.replace('%0s','%s')
+			#n = n.replace('%0e','0%e') if int(file[1][3]) < 10 else n.replace('%0e','%e')
+			if int(file[1][2]) < 10: n = n.replace('%0s','0%s')
+			else: n.replace('%0s','%s')
+			if int(file[1][3]) < 10: n = n.replace('%0e','0%e')
+			else: n.replace('%0e','%e')
 			# Replace codes with values
 			for x,y in zip(('%t','%n','%s','%e'),file[1]): n = n.replace(x,y) 
 			inFilePath = osp.split(inFiles[file[0]])[0]
@@ -235,11 +273,14 @@ class mainFrame(wx.Frame):
 		self.text_ctrl_3.Remove(0,self.text_ctrl_3.GetLastPosition())
 		self.text_ctrl_3.SetInsertionPoint(0)
 		self.text_ctrl_3.WriteText("\n".join([x[0]+" => "+x[1] for x in self.fileMap]))
+		self.status.SetStatusText("Ready")
 	
 	def handleRename(self,event):
+		self.status.SetStatusText("Renaming...")
 		for old,new in self.fileMap:
 			if old != new:
 				os.renames(old,new)
+		self.status.SetStatusText("Ready")
 
 
 class gui(wx.App):
