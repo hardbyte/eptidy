@@ -13,6 +13,13 @@ TODO:
 * bmp for installer
 * windows uninstaller in linking.py
 * SMALL standalone version
+* Option to exclude some files
+
+BUGS:
+* Didn't partse S1 10 or S1 E10
+* Didn't work when IMDB went down, need some mirror sites or something
+* %0e does't work for numbers > 10 - work perfectly for 1-9 but screws when goes to 10
+* Ugly in windows
 """
 import urllib
 import re
@@ -62,6 +69,8 @@ class Eptidy:
 	
 	"""
 	imdbBaseAddress = "http://www.imdb.com/title/tt"
+	# Ze German
+	#imdbBaseAddress = "http://www.imdb.de/title/tt"
 	imdbData = {} # filled by getEpName
 	
 	def parseFileName(self,fileName):
@@ -117,6 +126,7 @@ class Eptidy:
 			Given a tuple (IMDB id, season, episode), return
 			episode name retrieved from IMDB
 		'''
+		print 'getting ep names'
 		if None in episodes: return None
 		
 		imdbId = episodes[0]
@@ -139,6 +149,8 @@ class Eptidy:
 				self.imdbData[imdbId] += line;
 		# parse html page for relevant data
 		r = "Season " + season + ", Episode " + epnum + ": <.*?>([^<]+)"
+		# Ze German imdb
+		#r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
 		m = re.search(re.compile(r),self.imdbData[imdbId])
 		if m: return m.group(1)
 		else: return ""
