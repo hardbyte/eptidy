@@ -80,16 +80,21 @@ class Eptidy:
 				'Gossip Girl':'0397442',
 				'Pushing Daisies':'0925266',
 				'Heroes':'0813715',
-				'The Big Bang Theory':'0898266'
+				'The Big Bang Theory':'0898266',
+                                'Arrested Development':'0367279',
+                                'MythBusters':'0383126',
+                                'Outrageous Fortune':'0461097',
+                                'Psych':'0491738',
+                                'Two and a Half Men':'0369179'
 				#evryone add their fav!
 			}
 	
 	# Set the path to and filename of our database.
 	fileName = ".eptidy.dat"
 	
-	#imdbBaseAddress = "http://www.imdb.com/title/tt"
+	imdbBaseAddress = "http://www.imdb.com/title/tt"
 	# Ze German
-	imdbBaseAddress = "http://www.imdb.de/title/tt"
+	#imdbBaseAddress = "http://www.imdb.de/title/tt"
 	imdbData = {} # filled by getEpName
 	
 	def __init__(self):
@@ -234,7 +239,7 @@ class Eptidy:
 					u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes', proxies={'http':self.proxy})
 					#u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes', proxies={'http':'http://proxyhost.tait.co.nz/proxy.pac'})
 					# 
-					dp(self.imdbBaseAddress + imdbId + '/episodes')
+					#dp(self.imdbBaseAddress + imdbId + '/episodes')
 				except Exception, e:
 					wx.MessageBox("Internet not available from python. Are you behind a proxy?\n%s" % e, "Error", wx.ICON_ERROR)
 					return ""
@@ -243,13 +248,13 @@ class Eptidy:
 			for line in u.readlines():
 				self.imdbData[imdbId] += line;
 				
-		dp(self.imdbData)
+		#dp(self.imdbData)
 		# parse html page for relevant data
-		#r = "Season " + season + ", Episode " + epnum + ": <.*?>([^<]+)"
+		r = "Season " + season + ", Episode " + epnum + ": <.*?>([^<]+)"
 		# Ze German imdb
-		r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
+		#r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
 		m = re.search(re.compile(r),self.imdbData[imdbId])
-		dp(m)
+		#dp(m)
 		if m: return m.group(1)
 		else: return ""
 	
