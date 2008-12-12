@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# coding: utf8
 """
 Eptidy - Tidy up all your tv episodes
 
@@ -8,13 +9,10 @@ TODO:
 * progress bar (with cancel button)
 * windows hidden dirs should be ignored
 * easter eggs
-* port to a universal gui like tk :-P
 * icon for standalone + python based program 
 * bmp for installer
 * windows uninstaller in linking.py
-* SMALL standalone version
 * Option to exclude some files
-* implement wxChoice for the patterns... http://genotrance.wordpress.com/2006/08/19/wxpython-widgets-part-i/
 
 BUGS:
 * Didn't parse S1 10 or S1 E10
@@ -22,6 +20,9 @@ BUGS:
 * %0e does't work for numbers > 10 - work perfectly for 1-9 but screws when goes to 10 //FIXED
 * Ugly in windows // isn't everything?
 """
+
+__version__ = '0.3'
+
 import urllib
 import re
 import os.path as osp
@@ -30,7 +31,8 @@ from os import sys
 import shelve
 import wx
 from wx import grid as wxgrid
-
+import copy
+import string
 
 
 debug = True
@@ -42,10 +44,10 @@ def dp(str):
 
 class Show:
 	"""A show object..."""
-	def __init__(self,name,imdb,matches=None,enabled=True,comments=None):
+	def __init__(self,name,imdb,match,enabled=True,comments=None):
 		self.name = name
 		self.imdb = imdb
-		self.matches = matches
+		self.match = match
 		self.enabled = True
 		self.comments = comments
 
@@ -65,33 +67,43 @@ class Eptidy:
 	
 	"""
 	
-	SHOWS = {	'Dexter':'0773262',
-				'Bones':'0460627',
-				'House':'0412142',
-				'Scrubs':'0285403',
-				'Prison Break':'0455275',
-				'Chuck':'0934814',
-				'How I Met Your Mother':'0460649',
-				'Terminator':'0851851',
-				'Californication':'0904208',
-				'Top Gear':'0163503',
-				'Burn Notice':'0810788',
-				'Boston Legal':'0402711',
-				'Gossip Girl':'0397442',
-				'Pushing Daisies':'0925266',
-				'Heroes':'0813715',
-				'The Big Bang Theory':'0898266',
-                                'Arrested Development':'0367279',
-                                'MythBusters':'0383126',
-                                'Outrageous Fortune':'0461097',
-                                'Psych':'0491738',
-                                'Two and a Half Men':'0369179'
+	SHOWS = [
+
+				('Dexter','0773262','dexter'),
+				('Bones','0460627','bones'),
+				('House','0412142','house'),
+				('Scrubs','0285403','scrubs'),
+				('Prison Break','0455275','prison.break'),
+				('Chuck','0934814','chuck'),
+				('How I Met Your Mother','0460649','how.i.met.your.mother'),
+				('Terminator','0851851','terminator|ttscc'),
+				('Californication','0904208','californication'),
+				('Top Gear','0163503','top.gear',False),
+				('Burn Notice','0810788','burn.notice'),
+				('Boston Legal','0402711','boston.legal'),
+				('Gossip Girl','0397442','gossip.girl'),
+				('Pushing Daisies','0925266','pushing.dasies'),
+				('Heroes','0813715','heroes'),
+				('The Big Bang Theory','0898266','big.bang.theory|tbbt'),
+				('Arrested Development','0367279','arrested.development'),
+				('MythBusters','0383126','mythbusters'),
+				('Outrageous Fortune','0461097','outrageous.fortune'),
+				('Psych','0491738','psych'),
+				('Two and a Half Men','0369179','two.and.a.half.men')
 				#evryone add their fav!
-			}
+			]
 	
 	# Set the path to and filename of our database.
-	fileName = ".eptidy.dat"
+	if os.name == 'posix':
+		fileName = "%s/.eptidy" % os.environ["HOME"]
+	elif os.name == 'mac':
+		fileName = "%s/Library/Application Support/eptidy" % os.environ["HOME"]
+	elif os.name == 'nt':
+		fileName = "%s\Application Data\EpTidy" % os.environ["USERPROFILE"]
+	else:
+		dp('No OS found. What the hell are you?')
 	
+	dp('filename: %s' % fileName)
 	imdbBaseAddress = "http://www.imdb.com/title/tt"
 	# Ze German
 	#imdbBaseAddress = "http://www.imdb.de/title/tt"
@@ -104,20 +116,24 @@ class Eptidy:
 			#TODO: find the filename here...
 			self.fileName = ".eptidy.dat"		# CHANGEME
 		
-		db = shelve.open(self.fileName)
+		try:
+			db = shelve.open(self.fileName)
+		except Exception, e:
+			dp('Unable to open file\nError: %s' % e)
+		try:
+			self.use_proxy = db['use_proxy']
+		except KeyError:
+			self.use_proxy = False
 		try:
 			self.proxy = db['proxy']
 		except KeyError:
-			self.proxy = db['proxy'] = 'http://proxyhost.tait.co.nz/proxy.pac'
+			self.proxy = db['proxy'] = '' #'http://202.37.97.11:3128'
 		try:
 			# load shows
 			self.shows = db['shows']
-			if type(self.shows) is not list:
-				del db['shows']
-				raise SystemExit
 		except KeyError:
 			# No data availave - load default shows list and save them for future.
-			self.shows = db['shows'] = [Show(show,self.SHOWS[show]) for show in self.SHOWS]
+			self.shows = db['shows'] = [Show(*show) for show in self.SHOWS]
 		try:
 			# load patterns
 			self.patterns = db['patterns']
@@ -125,6 +141,7 @@ class Eptidy:
 			self.patterns = db['patterns'] = ["%t %sx%0e - %n","%t.S%0sE%0e.%n",osp.normpath(osp.expanduser('~')+'/%t/Season %s/%0e - %n')]
 			
 		db.close()
+	
 	
 	def addProxy(self,proxyAddress):
 		"""If python requires a proxy to access the interwebs add it here.
@@ -166,6 +183,7 @@ class Eptidy:
 		db = shelve.open(self.fileName)
 		db['shows'] = self.shows
 		db['proxy'] = self.proxy
+		db['use_proxy'] = self.use_proxy
 		db['patterns'] = self.patterns
 		db.close()
 			
@@ -184,21 +202,15 @@ class Eptidy:
 		else: return (None,None)
 	
 	def getImdbId(self,fileName):
-		v = None
-		for s in self.shows:
-			key,val = s.name,s.imdb
-			r = key.replace(" ",".")
-			m = re.search(re.compile(r,re.IGNORECASE),fileName)
-			if m:
-				k = key
-				v = val
-				return k,v
+		for s in [a for a in self.shows if a.enabled]:
+			m = re.search(re.compile(s.match,re.IGNORECASE),fileName)
+			if m: return s.name,s.imdb
 		return None,None
 	
 	def identifyFiles(self,files):
 		'''
-			Given a list of files, return a list of tuples
-			containing season number, episode number, episode name
+		Given a list of files, return a list of tuples
+		containing season number, episode number, episode name
 		'''
 		# get file name only
 		filenames = map(osp.basename,files)
@@ -214,7 +226,7 @@ class Eptidy:
 		episodeData = zip(zip(*identifiedFiles)[2],*zip(*identifiers))
 		# get episode name for each item
 		names = map(self.getEpName,episodeData)
-		# concatenate episode names to season numbers and episode numbers
+		# concatenate episode names to season numgnuradiobers and episode numbers
 		results = zip(zip(*identifiedFiles)[1],names,*zip(*identifiers))
 		return results
 	
@@ -231,36 +243,36 @@ class Eptidy:
 		epnum = episodes[2]
 		if not imdbId in self.imdbData:
 			# retrieve imdb url
+			if self.use_proxy == True:
+				proxies = {'http':self.proxy}
+			else:
+				proxies = None
 			try:
-				u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes')
+				u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes',proxies)
 			except Exception, e:
-				try:
-					#try work proxy
-					u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes', proxies={'http':self.proxy})
-					#u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes', proxies={'http':'http://proxyhost.tait.co.nz/proxy.pac'})
-					# 
-					#dp(self.imdbBaseAddress + imdbId + '/episodes')
-				except Exception, e:
 					wx.MessageBox("Internet not available from python. Are you behind a proxy?\n%s" % e, "Error", wx.ICON_ERROR)
 					return ""
+
 			# get big string of html page
 			self.imdbData[imdbId] = ''
 			for line in u.readlines():
 				self.imdbData[imdbId] += line;
-				
-		#dp(self.imdbData)
+
+
 		# parse html page for relevant data
 		r = "Season " + season + ", Episode " + epnum + ": <.*?>([^<]+)"
 		# Ze German imdb
 		#r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
 		m = re.search(re.compile(r),self.imdbData[imdbId])
-		#dp(m)
-		if m: return m.group(1)
+		if m:
+			t = string.maketrans(u"?:/\\*\"<>|",u"ￂ﾿?//??ￂﾋￂﾛￅﾠ")
+			return string.translate(encode(m.group(1),'utf8'),t)
 		else: return ""
 	
-class addEntryBox(wx.Dialog):
-	def __init__(self,parent):
+class epEntryBox(wx.Dialog):
+	def __init__(self,parent,edit=None):
 		self.parent = parent
+		self.edit = edit
 		wx.Dialog.__init__(self,parent,-1,style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER)
 		rootsizer = wx.BoxSizer(wx.VERTICAL)
 		rootpanel = wx.Panel(self,-1)
@@ -275,24 +287,44 @@ class addEntryBox(wx.Dialog):
 		ctrlbuts.Add(canbut,0,wx.ALL,5)
 		ctrlbuts.Add(okbut,0,wx.ALL,5)
 		grid = wx.GridSizer(3,2)
-		self.controls = [(wx.StaticText(rootpanel,-1,n),wx.TextCtrl(rootpanel,-1,"")) for n in ("Episode: ","IMDB Id: ","Match Expression: ")]
+		self.controls = [(wx.StaticText(rootpanel,-1,n+": "),wx.TextCtrl(rootpanel,-1,"")) for n in ("Episode","IMDB Id","Match Expression")]
 		[(grid.Add(n,0,wx.ALIGN_RIGHT|wx.ALL|wx.EXPAND,5),grid.Add(m,1,wx.ALL|wx.EXPAND,5)) for (n,m) in self.controls]
+		if edit is not None:
+			tbs = zip(*self.controls)[1]
+			tbs[0].SetValue(self.parent.shows[edit].name)
+			tbs[1].SetValue(self.parent.shows[edit].imdb)
+			tbs[2].SetValue(self.parent.shows[edit].match)
 		mainsizer.Add(grid,0,wx.ALL&~wx.BOTTOM|wx.EXPAND,5)
 		mainsizer.Add(ctrlbuts,0,wx.ALL&~wx.TOP|wx.EXPAND,5)
 		rootpanel.SetSizer(mainsizer)
 		rootsizer.Add(rootpanel,0,wx.ALL|wx.EXPAND,0)
 		self.SetSizer(rootsizer)
 		
-	def Cancel(self,event): self.Close()
+	def Cancel(self,event): self.EndModal(0)
 	
 	def OK(self,event):
-		self.parent.AddItem([n.GetValue() for n in zip(*self.controls)[1]])
-		self.Close()
+		tbs = zip(*self.controls)[1]
+		n = [n for (n,m) in self.controls if m.IsEmpty()]
+		if n:
+			[ewx.MessageBox("%s field must not be empty"%a,"Error",wx.ICON_ERROR) for a in n]
+		else:
+			if self.edit is not None:
+				self.parent.shows[self.edit].name = tbs[0].GetValue()
+				ischecked = self.parent.ep_list.IsChecked(self.edit)
+				self.parent.ep_list.SetString(self.edit,tbs[0].GetValue())
+				self.parent.ep_list.Check(self.edit,ischecked)
+				self.parent.shows[self.edit].imdb = tbs[1].GetValue()
+				self.parent.shows[self.edit].match = tbs[2].GetValue()
+			else:
+				self.parent.AddItem([n.GetValue() for n in zip(*self.controls)[1]])
+		self.EndModal(0)
 	
 
 class optionsBox(wx.Dialog):
 	def __init__(self,parent):
+		dp('Init called')
 		self.parent = parent
+		self.shows = copy.deepcopy(parent.e.shows)
 		wx.Dialog.__init__(self,parent,-1,style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER)
 		self.nEps = 0
 		# MAIN LAYOUT
@@ -313,30 +345,28 @@ class optionsBox(wx.Dialog):
 		# EPISODE PANE
 		ep_sizer = wx.BoxSizer(wx.HORIZONTAL)
 		ep_buts = wx.BoxSizer(wx.VERTICAL)
-		
 		self.ep_list = wx.CheckListBox(self.tab_eps,-1)
-		
-		self.ep_list.Set([s.name for s in parent.e.shows])
-		[self.ep_list.Check(i,n.enabled) for i,n in enumerate(parent.e.shows)]
+		self.Bind(wx.EVT_CHECKLISTBOX, self.handleEpCheck, self.ep_list)
+		self.ep_list.Set([s.name for s in self.shows])
+		[self.ep_list.Check(i,n.enabled) for i,n in enumerate(self.shows)]
 		self.ep_add = wx.Button(self.tab_eps,-1,"Add")
 		self.ep_edt = wx.Button(self.tab_eps,-1,"Edit")
 		self.ep_del = wx.Button(self.tab_eps,-1,"Remove")
 		self.Bind(wx.EVT_BUTTON, self.handleAdd, self.ep_add)
+		self.Bind(wx.EVT_BUTTON, self.handleEdit, self.ep_edt)
+		self.Bind(wx.EVT_BUTTON, self.handleRemove, self.ep_del)
 		# NETWORK PANE
 		nt_sizer = wx.BoxSizer(wx.VERTICAL)
-		nt_grsizer = wx.GridSizer(2)
-		self.nt_usep = wx.CheckBox(self.tab_network,-1,"Use a proxy server (currently does nothing)")
+		nt_grsizer = wx.BoxSizer(wx.HORIZONTAL)
+		self.nt_usep = wx.CheckBox(self.tab_network,-1,"Use a proxy server")
+		self.nt_usep.SetValue(parent.e.use_proxy)
 		self.nt_plab = wx.StaticText(self.tab_network,-1,"Proxy Address:")
 		self.nt_paddr = wx.TextCtrl(self.tab_network,-1,parent.e.proxy)
-		self.nt_ilab = wx.StaticText(self.tab_network,-1,"IMDB base address")
-		self.nt_iaddr = wx.TextCtrl(self.tab_network,-1,"")
 		
 		# BUILDING IT UP
 		#network pane
 		nt_grsizer.Add(self.nt_plab,0,wx.ALL|wx.EXPAND,5)
 		nt_grsizer.Add(self.nt_paddr,1,wx.ALL|wx.EXPAND,5)
-		nt_grsizer.Add(self.nt_ilab,0,wx.ALL|wx.EXPAND,5)
-		nt_grsizer.Add(self.nt_iaddr,1,wx.ALL|wx.EXPAND,5)
 		nt_sizer.Add(self.nt_usep,0,wx.ALL|wx.EXPAND,5)
 		nt_sizer.Add(nt_grsizer,0,wx.ALL|wx.EXPAND,0)
 		self.tab_network.SetSizer(nt_sizer)
@@ -364,28 +394,71 @@ class optionsBox(wx.Dialog):
 		rootbox.Fit(self)
 		self.Layout()
 	
+	def handleEpCheck(self,event):
+		item = event.GetSelection()
+		self.shows[item].enabled = self.ep_list.IsChecked(item)
+	
 	def handleCancel(self,event):
-		self.Close()
+		dp('Options: Cancel Button Pressed')
+		del self.shows
+		self.EndModal(0)
 	
 	def handleOK(self,event):
-		#TODO: save data
+		dp('Options: Ok Button Pressed')
 		self.parent.e.proxy = self.nt_paddr.GetValue()
+		self.parent.e.use_proxy = self.nt_usep.GetValue()
+		self.parent.e.shows = copy.deepcopy(self.shows)
 		self.parent.e.saveChanges()
-		self.Close()
+		self.EndModal(0)
 	
-	def handleAdd(self,event): addEntryBox(self).Show()
+	def handleAdd(self,event): epEntryBox(self).ShowModal()
+	
+	def handleEdit(self,event):
+		item = self.ep_list.GetSelection()
+		if item == wx.NOT_FOUND:
+			wx.MessageBox("First select an item to edit","Error",wx.ICON_ERROR)
+		else:
+			epEntryBox(self,item).ShowModal()
+	
+	def handleRemove(self,event):
+		item = self.ep_list.GetSelection()
+		self.shows.pop(item)
+		self.ep_list.Delete(item)
 	
 	def AddItem(self,item):
-		self.ep_list.InsertItems([item[0]],self.nEps)
-		self.ep_list.Check(self.nEps)
-		self.nEps += 1
+		self.shows.append(Show(*item))
+		self.ep_list.Append(item[0])
+		self.ep_list.Check(self.ep_list.GetCount())
 
 class mainFrame(wx.Frame):
+	def test(self,event):
+		print event
+
 	def __init__(self):
 		# Create the back end
 		self.e = Eptidy()
-		#kwds["style"] = wx.DEFAULT_FRAME_STYLE
 		wx.Frame.__init__(self, None, -1, "")
+		#MENUBAR
+		
+		m_file = wx.Menu()
+		m_file.Append(0,"&Options","Configure EpTidy")
+		wx.EVT_MENU(self,0,self.handleOpts)
+		m_file.AppendSeparator()
+		m_file.Append(wx.ID_EXIT,"E&xit")
+		wx.EVT_MENU(self,wx.ID_EXIT,self.Quit)
+		
+		m_help = wx.Menu()
+		m_help.Append(1,"&How to Use")
+		m_help.Append(2,"&Naming Patterns")
+		wx.EVT_MENU(self,2,self.handleHelp)
+		m_help.Append(3,"&About")
+		
+		m = wx.MenuBar()
+		m.Append(m_file,"File")
+		m.Append(m_help,"Help")
+		self.SetMenuBar(m)
+		#END MENUBAR
+		
 		self.panmain = wx.Panel(self,-1)
 		rootbox = wx.BoxSizer(wx.VERTICAL)
 		self.panel_1 = wx.Panel(self.panmain, -1)
@@ -397,16 +470,12 @@ class mainFrame(wx.Frame):
 		self.checkbox_1.SetValue(1)
 		self.label_2 = wx.StaticText(self.panel_1, -1, "Naming Pattern:")
 		self.namepatts = wx.ComboBox(self.panel_1,-1, self.e.patterns[0], choices = self.e.patterns)
-		nptt = wx.ToolTip("%t : Show Title\n%n : Episode Name\n%s : Season Number\n%0s : Zero-padded Season Number\n%e : Episode Number\n%0e : Zero-padded Episode Number")
-		self.namepatts.SetToolTip(nptt)
-		self.checkbox_save_pattern = wx.CheckBox(self.panel_1,-1,"Save Pattern?")
-		self.checkbox_save_pattern.SetValue(0)
 		self.pattern_help = wx.Button(self.panel_1,-1,"?")
-		self.button_opts = wx.Button(self.panel_1,-1,"Options")
 		self.button_2 = wx.Button(self.panel_1, -1, "Scan")
+		self.button_2.SetDefault()
 		self.button_3 = wx.Button(self.panel_1, -1, "Process")
 		self.button_4 = wx.Button(self.panel_1, -1, "Rename Files")
-		self.eplist = wx.CheckListBox(self.panel_1,-1)
+		self.eplist = wx.CheckListBox(self.panel_1,-1,size=(-1,150))
 		self.SetTitle("Episode Renamer")
 		self.SetSize((650, 400))
 		self.status = self.CreateStatusBar()
@@ -422,10 +491,8 @@ class mainFrame(wx.Frame):
 		sizer_2.Add(sizer_3, 0, wx.EXPAND, 0)
 		sizer_4.Add(self.label_2, 0, wx.ALL|wx.ALIGN_CENTER_VERTICAL, 5)
 		sizer_4.Add(self.namepatts, 1, wx.ALL|wx.ALIGN_CENTER_VERTICAL, 5)
-		sizer_4.Add(self.checkbox_save_pattern,0,wx.ALL|wx.ALIGN_CENTER_VERTICAL, 5)
 		sizer_4.Add(self.pattern_help,0,wx.ALL|wx.ALIGN_CENTER_VERTICAL, 5)
 		sizer_2.Add(sizer_4, 0, wx.EXPAND, 0)
-		sizer_5.Add(self.button_opts, 2, wx.ALL, 5)
 		sizer_5.Add(self.button_2, 2, wx.ALL, 5)
 		sizer_5.Add(self.button_3, 2, wx.ALL, 5)
 		sizer_5.Add(self.button_4, 2, wx.ALL, 5)
@@ -440,7 +507,6 @@ class mainFrame(wx.Frame):
 		rootbox.Fit(self)
 		self.Layout()
 		self.Bind(wx.EVT_BUTTON, self.handleHelp, self.pattern_help)
-		self.Bind(wx.EVT_BUTTON, self.handleOpts, self.button_opts)
 		self.Bind(wx.EVT_BUTTON, self.handleScan, self.button_2)
 		self.Bind(wx.EVT_BUTTON, self.handleProcess, self.button_3)
 		self.Bind(wx.EVT_BUTTON, self.handleBrowse, self.button_1)
@@ -448,23 +514,36 @@ class mainFrame(wx.Frame):
 		self.status.SetStatusText("Ready")
 	
 	def handleHelp(self,event):
-		wx.MessageBox("%t : Show Title\n%n : Episode Name\n%s : Season Number\n%0s : Zero-padded Season Number\n%e : Episode Number\n%0e : Zero-padded Episode Number","Naming Pattern Help",wx.ICON_INFORMATION)
+		wx.MessageBox('''
+%t : Show Title
+%n : Episode Name
+%s : Season Number
+%0s : Zero-padded Season Number
+%e : Episode Number
+%0e : Zero-padded Episode Number
+
+
+For example, given "dexter203.avi":
+
+"%t %sx%0e" produces
+"Dexter 2x03.avi"
+
+"C:\TV\%t\Season %s\%t" produces
+"C:\TV\Dexter\Season 2\An Inconvenient Lie.avi"'''
+		,"Naming Pattern Help",wx.ICON_INFORMATION)
 
 	
 	def handleBrowse(self,event):
 		"""
 		change the current directory to that selected by a pop up dir chooser (wxDirDialog)
 		"""
-		dlg = wx.DirDialog(self,"Choose a directory:")
-		if dlg.ShowModal() == wx.ID_OK:
-			self.text_ctrl_1.Remove(0,self.text_ctrl_1.GetLastPosition())
-			self.text_ctrl_1.SetInsertionPoint(0)
-			self.text_ctrl_1.WriteText(dlg.GetPath())
-		dlg.Destroy()
+		p = wx.DirSelector("Choose a directory:",self.text_ctrl_1.GetValue())
+		if p != "":
+			self.text_ctrl_1.SetValue(p)
 	
 	def handleOpts(self,event):
 		opts = optionsBox(self)
-		opts.Show()
+		opts.ShowModal()
 		
 	def handleScan(self,event):
 		"""
@@ -494,8 +573,9 @@ class mainFrame(wx.Frame):
 				[self.eplist.Check(i) for i in range(len(entries))]
 			else: self.eplist.Set([])
 			self.status.SetStatusText("Ready")
+			self.button_3.SetDefault()
 		else:
-			wx.MessageBox("Invalid path",wx.ICON_ERROR)
+			wx.MessageBox("Invalid path","Error",wx.ICON_ERROR)
 		
 	def handleProcess(self,event):
 		self.status.SetStatusText("Processing...")
@@ -528,6 +608,7 @@ class mainFrame(wx.Frame):
 		if self.checkbox_save_pattern.GetValue():
 			self.e.savePattern(namePattern)
 		self.status.SetStatusText("Ready")
+		self.button_4.SetDefault()
 	
 	def handleRename(self,event):
 		self.status.SetStatusText("Renaming...")
@@ -535,6 +616,8 @@ class mainFrame(wx.Frame):
 			if old != new:
 				os.renames(old,new)
 		self.status.SetStatusText("Ready")
+	
+	def Quit(self,event): self.Close()
 
 
 class gui(wx.App):
@@ -542,6 +625,11 @@ class gui(wx.App):
 		"""Override OnInit to create our Frame"""
 		wx.InitAllImageHandlers()
 		mf = mainFrame()
+		try:
+			icon = wx.Icon(name='tvi.ico', type=wx.BITMAP_TYPE_ICO)
+			mf.SetIcon(icon)
+		except:
+			dp('icon not found')
 		self.SetTopWindow(mf)
 		mf.Show()
 		return 1
@@ -550,4 +638,3 @@ class gui(wx.App):
 if __name__ == "__main__":
 	g = gui(0)
 	g.MainLoop()
-
