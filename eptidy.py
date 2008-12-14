@@ -255,7 +255,7 @@ class Eptidy:
 		#r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
 		m = re.search(re.compile(r),self.imdbData[imdbId])
 		if m:
-			t = string.maketrans(u"?:/\\*\"<>|",u"�?//??���")
+			t = string.maketrans(u"?:/\\*\"<>|",u"¿⁚⁄⁄⁕″‹›¦")
 			return string.translate(encode(m.group(1),'utf8'),t)
 		else: return ""
 	
