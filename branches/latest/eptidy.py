@@ -68,7 +68,6 @@ class Eptidy:
 	"""
 	
 	SHOWS = [
-
 				('Dexter','0773262','dexter'),
 				('Bones','0460627','bones'),
 				('House','0412142','house'),
@@ -101,7 +100,7 @@ class Eptidy:
 	elif os.name == 'nt':
 		fileName = "%s\Application Data\EpTidy" % os.environ["USERPROFILE"]
 	else:
-		dp('No OS found. What the hell are you?')
+		fileName = ".eptidy"
 	
 	dp('filename: %s' % fileName)
 	imdbBaseAddress = "http://www.imdb.com/title/tt"
@@ -112,10 +111,6 @@ class Eptidy:
 	def __init__(self):
 		"""Find the location of our eptidy files
 		And load the data from them. Else load defaults"""
-		if self.fileName is None:
-			#TODO: find the filename here...
-			self.fileName = ".eptidy.dat"		# CHANGEME
-		
 		try:
 			db = shelve.open(self.fileName)
 		except Exception, e:
@@ -153,7 +148,7 @@ class Eptidy:
 	
 	def savePattern(self,pattern):
 		db = shelve.open(self.fileName)
-		db['patterns'] = [pattern] + db['patterns']
+		db['patterns'] += [pattern]
 		db.close()
 
 	def getImdbNum(self,episodeName):
@@ -166,9 +161,7 @@ class Eptidy:
 		if imdbNum is None:
 			imdbNum = getImdbNum(episodeName)
 		db = shelve.open(self.fileName)
-		l = db['shows']
-		l.append(Show(episodeName,imdbNum))
-		db['shows'] = l
+		db['shows'].append(Show(episodeName,imdbNum))
 		db.close()
 		
 	def removeEpisode(self,episodeName):
@@ -250,22 +243,19 @@ class Eptidy:
 			try:
 				u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes',proxies)
 			except Exception, e:
-					wx.MessageBox("Internet not available from python. Are you behind a proxy?\n%s" % e, "Error", wx.ICON_ERROR)
-					return ""
-
+				wx.MessageBox("Internet not available from python. Are you behind a proxy?\n%s" % e, "Error", wx.ICON_ERROR)
+				return ""
 			# get big string of html page
 			self.imdbData[imdbId] = ''
 			for line in u.readlines():
 				self.imdbData[imdbId] += line;
-
-
 		# parse html page for relevant data
 		r = "Season " + season + ", Episode " + epnum + ": <.*?>([^<]+)"
 		# Ze German imdb
 		#r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
 		m = re.search(re.compile(r),self.imdbData[imdbId])
 		if m:
-			t = string.maketrans(u"?:/\\*\"<>|",u"ￂ﾿?//??ￂﾋￂﾛￅﾠ")
+			t = string.maketrans(u"?:/\\*\"<>|",u"�?//??���")
 			return string.translate(encode(m.group(1),'utf8'),t)
 		else: return ""
 	
@@ -586,10 +576,6 @@ For example, given "dexter203.avi":
 		outFiles = []
 		for file in enumerate(preFiles):
 			n = namePattern
-			# Zero padding for season and episode numbers
-			# Doesn't work in python 2.4...
-			#n = n.replace('%0s','0%s') if int(file[1][2]) < 10 else n.replace('%0s','%s')
-			#n = n.replace('%0e','0%e') if int(file[1][3]) < 10 else n.replace('%0e','%e')
 			if int(file[1][2]) < 10: n = n.replace('%0s','0%s')
 			else: n = n.replace('%0s','%s')
 			if int(file[1][3]) < 10: n = n.replace('%0e','0%e')
@@ -599,22 +585,17 @@ For example, given "dexter203.avi":
 			inFilePath = osp.split(inFiles[file[0]])[0]
 			inFileExt = osp.splitext(inFiles[file[0]])[1]
 			outFiles.append(osp.join(inFilePath,n+inFileExt))
-		self.fileMap = zip(inFiles,outFiles)
+		self.fileMap = [(a,b) for (a,b) in zip(inFiles,outFiles) if a != b]
 		self.eplist.Set(["%s => %s" % x for x in self.fileMap])
 		[self.eplist.Check(i) for i in range(len(self.fileMap))]
-		#self.text_ctrl_3.Remove(0,self.text_ctrl_3.GetLastPosition())
-		#self.text_ctrl_3.SetInsertionPoint(0)
-		#self.text_ctrl_3.WriteText("\n".join([x[0]+" => "+x[1] for x in self.fileMap]))
-		if self.checkbox_save_pattern.GetValue():
-			self.e.savePattern(namePattern)
+		self.e.savePattern(namePattern)
 		self.status.SetStatusText("Ready")
 		self.button_4.SetDefault()
 	
 	def handleRename(self,event):
 		self.status.SetStatusText("Renaming...")
 		for old,new in self.fileMap:
-			if old != new:
-				os.renames(old,new)
+			os.renames(old,new)
 		self.status.SetStatusText("Ready")
 	
 	def Quit(self,event): self.Close()
@@ -638,3 +619,4 @@ class gui(wx.App):
 if __name__ == "__main__":
 	g = gui(0)
 	g.MainLoop()
+
