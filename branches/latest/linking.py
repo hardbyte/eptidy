@@ -24,9 +24,14 @@ def install():
 		if os.path.isfile(eptidyLink): 
 			os.remove(eptidyLink)	# we want to make a new one
 			
-		path2py = sys.exec_prefix
-		shortcutPath = '"' + path2py + '\\pythonw.exe" "' + os.path.join(sitePackages,'eptidy.py"')
-		create_shortcut(shortcutPath, 'Run eptidy', eptidyLink)
+		path2py = os.path.join(sys.exec_prefix,"pythonw.exe")
+		shortcutPath = os.path.join(sitePackages,'eptidy.py')
+		#create_shortcut(shortcutPath, 'Run eptidy', eptidyLink)
+		#create_shortcut('pythonw.exe', 'Run eptidy', eptidyLink
+		#no like this http://docs.python.org/distutils/builtdist.html#create_shortcut
+		#create_shortcut(os.path.join(path2py,"pythonw.exe"), 'Run eptidy', eptidyLink, shortcutPath)
+		iconPath = os.path.join(sitePackages,'tvi.ico')
+		create_shortcut(path2py, 'Run eptidy', eptidyLink, shortcutPath,iconPath)
 		file_created(eptidyLink)
 
 		#homepage 
