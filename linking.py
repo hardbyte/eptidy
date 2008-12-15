@@ -31,7 +31,7 @@ def install():
 		#no like this http://docs.python.org/distutils/builtdist.html#create_shortcut
 		#create_shortcut(os.path.join(path2py,"pythonw.exe"), 'Run eptidy', eptidyLink, shortcutPath)
 		iconPath = os.path.join(sitePackages,'tvi.ico')
-		create_shortcut(path2py, 'Run eptidy', eptidyLink, shortcutPath,iconPath)
+		create_shortcut(path2py, 'Run eptidy', eptidyLink, shortcutPath,'',iconPath)
 		file_created(eptidyLink)
 
 		#homepage 
