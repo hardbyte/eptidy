@@ -17,7 +17,6 @@ TODO:
 BUGS:
 * Didn't parse S1 10 or S1 E10
 * Didn't work when IMDB went down, need some mirror sites or something
-* %0e does't work for numbers > 10 - work perfectly for 1-9 but screws when goes to 10 //FIXED
 * Ugly in windows // isn't everything?
 """
 
@@ -223,9 +222,10 @@ class Eptidy:
 		try:
 			names = map(self.getEpName,episodeData)
 		except Exception, e: #This should be a specific exception
-			wx.MessageBox(e, "Error", wx.ICON_ERROR)
+			if e is not None:
+				wx.MessageBox("Error: %s" % e, "Error", wx.ICON_ERROR)
 			return None
-		# concatenate episode names to season numgnuradiobers and episode numbers
+		# concatenate episode names to season numbers and episode numbers
 		results = zip(zip(*identifiedFiles)[1],names,*zip(*identifiers))
 		return results
 	
@@ -430,8 +430,8 @@ class mainFrame(wx.Frame):
 	def __init__(self):
 		# Create the back end
 		self.e = Eptidy()
-		self.doFiles = ()
-		self.fileMap = ()
+		self.doFiles = None
+		self.fileMap = None
 		wx.Frame.__init__(self, None, -1, "")
 		#MENUBAR
 		
@@ -443,10 +443,12 @@ class mainFrame(wx.Frame):
 		wx.EVT_MENU(self,wx.ID_EXIT,self.Quit)
 		
 		m_help = wx.Menu()
-		m_help.Append(1,"&How to Use")
-		m_help.Append(2,"&Naming Patterns")
-		wx.EVT_MENU(self,2,self.handleHelp)
-		m_help.Append(3,"&About")
+		m_help.Append(1,"&How to Use","How to use Eptidy")
+		wx.EVT_MENU(self,1,self.handleHelp)
+		m_help.Append(2,"&Naming Patterns","Naming patterns explained")
+		wx.EVT_MENU(self,2,self.handleNp)
+		m_help.Append(3,"&About","About Eptidy")
+		wx.EVT_MENU(self,3,self.handleAbout)
 		
 		m = wx.MenuBar()
 		m.Append(m_file,"File")
@@ -510,6 +512,34 @@ class mainFrame(wx.Frame):
 	
 	def handleHelp(self,event):
 		wx.MessageBox('''
+Eptidy
+
+Eptidy manages your collection of TV episodes
+by scanning their file names, determining season
+and episode numbers, and retrieving the corresponding
+episode name from IMDB.
+
+You can use this program to organise your
+episodes with your preferred naming convention
+and folder hierachy
+
+Firstly, select a path by typing it in or using
+the browse button, and choose whether you want
+a recursive scan. Press Scan to have Eptidy
+generate a list of all the episodes in that
+location. Type in or select from the drop-down
+list a naming convention (for help on these see
+the naming pattern help option) and press Process.
+After retrieving episode names from IMDB, Eptidy
+will produce a list of proposed renames. Select
+those you wish to make and press Rename Files.
+
+Note: The Process button will remove unchecked
+  entries from its list every time you press it.
+		''',"Eptidy Help",wx.ICON_INFORMATION)
+	
+	def handleNp(self,event):
+		wx.MessageBox('''
 %t : Show Title
 %n : Episode Name
 %s : Season Number
@@ -526,6 +556,17 @@ For example, given "dexter203.avi":
 "C:\TV\%t\Season %s\%t" produces
 "C:\TV\Dexter\Season 2\An Inconvenient Lie.avi"'''
 		,"Naming Pattern Help",wx.ICON_INFORMATION)
+	
+	def handleAbout(self,event):
+		info = wx.AboutDialogInfo()
+		info.SetName("Eptidy")
+		info.SetDevelopers(["Og","Brian"])
+		info.SetDescription("A program to flexibly organise your TV episodes")
+		info.SetVersion(__version__)
+		info.SetCopyright("Copyright (C) 2008 BOG Enterprises") # :-p i like :D
+		info.SetLicense("GNU General Public License v3.0")
+		info.SetWebSite("http://code.google.com/p/eptidy/")
+		wx.AboutBox(info)
 
 	
 	def handleBrowse(self,event):
@@ -592,10 +633,9 @@ For example, given "dexter203.avi":
 			inFilePath = osp.split(inFiles[file[0]])[0]
 			inFileExt = osp.splitext(inFiles[file[0]])[1]
 			outFiles.append(osp.join(inFilePath,n+inFileExt))
-		#self.fileMap = [(a,b) for (a,b) in zip(inFiles,outFiles) if a != b]
-		self.fileMap = zip(inFiles,outFiles)
+		self.fileMap = [(a,b) for (a,b) in zip(inFiles,outFiles) if a != b]
 		self.eplist.Set(["%s => %s" % x for x in self.fileMap])
-		[self.eplist.Check(i) for i,v in enumerate(self.fileMap) if v[0]!=v[1]]
+		[self.eplist.Check(i) for i in range(len(self.fileMap))]
 		self.e.savePattern(namePattern)
 		self.status.SetStatusText("Ready")
 		self.button_4.SetDefault()
@@ -607,6 +647,7 @@ For example, given "dexter203.avi":
 		else:
 			for old,new in self.fileMap:
 				os.renames(old,new)
+		self.fileMap = None
 		self.status.SetStatusText("Ready")
 	
 	def Quit(self,event): self.Close()
