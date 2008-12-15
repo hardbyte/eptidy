@@ -1,14 +1,47 @@
 #!/usr/bin/env python
 # Installer and installer maker for eptidy...
-# Make a windows executable with: python setup.py bdist_wininst --install-script linking.py
-# Make a standalone windows exe with: python setup.py py2exe
+# Make a windows executable with: 
+# python setup.py bdist_wininst --bitmap tv_icon.bmp --install-script linking.py
+# Make a standalone windows exe with: python setup.py py2exe --packages encodings
 # Make a debian or rpm in a similar way.
+
+# Tasks:
+# Rewrite the setup call to use a class... http://www.python.org/community/sigs/current/distutils-sig/doc/design/
+# from distutils.core import Distribution, setup
+# class eptidyDistro(Distribution):
+#	name = ...
+	
 
 from distutils.core import setup
 import py2exe
 
+manifest_template = '''
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+<assemblyIdentity
+    version="1.0.0.0"
+    processorArchitecture="x86"
+    name=""
+    type="win32"
+/>
+<description>Program</description>
+<dependency>
+    <dependentAssembly>
+        <assemblyIdentity
+            type="win32"
+            name="Microsoft.Windows.Common-Controls"
+            version="6.0.0.0"
+            processorArchitecture="X86"
+            publicKeyToken="6595b64144ccf1df"
+            language="*"
+        />
+    </dependentAssembly>
+</dependency>
+</assembly>
+'''
+
 setup(name = 'eptidy',
-	  version = '0.2',
+	  version = '0.3',
 	  description = 'Tidy up all your tv episodes',
 	  author = 'Og and the Tait Slackers :-p',
 	  author_email = 'ogtifs+eptidy@gmail.com',
@@ -21,12 +54,21 @@ setup(name = 'eptidy',
 	  scripts=['linking.py'], 
 	  py_modules = ['eptidy'],
 	  options = {
-	  	"py2exe": {
-	  		"compressed": 1, 
-	  		"optimize": 2, 
-	  		"ascii": 1, 
-	  		"bundle_files": 1},
+		  	"py2exe": {
+		  		"compressed": 1, 
+		  		"optimize": 2, 
+		  		"ascii": 1, 
+		  		"bundle_files": 1,
+		  		},
 	  		},
 	  zipfile = None,
-	  windows = ["eptidy.py"],
+	  windows = [
+	  {
+	  	'script': "eptidy.pyw",
+	  	'icon_resources':[(0,'tvi.ico')],
+	  	'other_resources':[(24, 1, manifest_template)],
+
+	  }],
+	  data_files = [('',['tvi.ico'])],
 	  )
+	  
