@@ -5,6 +5,13 @@
 # Make a standalone windows exe with: python setup.py py2exe
 # Make a debian or rpm in a similar way.
 
+# Tasks:
+# Rewrite the setup call to use a class... http://www.python.org/community/sigs/current/distutils-sig/doc/design/
+# from distutils.core import Distribution, setup
+# class eptidyDistro(Distribution):
+#	name = ...
+	
+
 from distutils.core import setup
 import py2exe
 
@@ -55,11 +62,13 @@ setup(name = 'eptidy',
 		  		},
 	  		},
 	  zipfile = None,
-	  windows = ["eptidy.py"],
-	  	#'icon_resources':[(0,'tvi.ico')],
-	  	#'other_resources':[(24, 1, manifest_template)],
+	  windows = [
+	  {
+	  	'script': "eptidy.py",
+	  	'icon_resources':[(0,'tvi.ico')],
+	  	'other_resources':[(24, 1, manifest_template)],
 
-	  	#},
-	  #data_files = [('',['tvi.ico'])],
+	  }],
+	  data_files = [('',['tvi.ico'])],
 	  )
 	  

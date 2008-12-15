@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# coding: utf8
 """
 Eptidy - Tidy up all your tv episodes
 
@@ -13,6 +12,7 @@ TODO:
 * bmp for installer
 * windows uninstaller in linking.py
 * Option to exclude some files
+* logging instead of debug print... let user choose to enable the log?
 
 BUGS:
 * Didn't parse S1 10 or S1 E10
@@ -28,7 +28,7 @@ import re
 import os.path as osp
 import os
 from os import sys
-import shelve
+import shelve, dbhash,anydbm
 import wx
 from wx import grid as wxgrid
 import copy
@@ -93,6 +93,7 @@ class Eptidy:
 			]
 	
 	# Set the path to and filename of our database.
+	
 	if os.name == 'posix':
 		fileName = "%s/.eptidy" % os.environ["HOME"]
 	elif os.name == 'mac':
@@ -102,6 +103,7 @@ class Eptidy:
 	else:
 		fileName = ".eptidy"
 	
+	#fileName = osp.join(wx.StandardPaths.Get().GetUserConfigDir(),'.eptidy')
 	dp('filename: %s' % fileName)
 	imdbBaseAddress = "http://www.imdb.com/title/tt"
 	# Ze German
@@ -111,10 +113,10 @@ class Eptidy:
 	def __init__(self):
 		"""Find the location of our eptidy files
 		And load the data from them. Else load defaults"""
-		try:
-			db = shelve.open(self.fileName)
-		except Exception, e:
-			dp('Unable to open file\nError: %s' % e)
+		#try:
+		db = shelve.open(self.fileName)
+		#except Exception, e:
+			#dp('Unable to open file\nError: %s' % e)
 		try:
 			self.use_proxy = db['use_proxy']
 		except KeyError:
@@ -218,7 +220,11 @@ class Eptidy:
 		# produce list of tuples containing all data required for site parsing
 		episodeData = zip(zip(*identifiedFiles)[2],*zip(*identifiers))
 		# get episode name for each item
-		names = map(self.getEpName,episodeData)
+		try:
+			names = map(self.getEpName,episodeData)
+		except Exception, e: #This should be a specific exception
+			wx.MessageBox(e, "Error", wx.ICON_ERROR)
+			return None
 		# concatenate episode names to season numgnuradiobers and episode numbers
 		results = zip(zip(*identifiedFiles)[1],names,*zip(*identifiers))
 		return results
@@ -235,16 +241,13 @@ class Eptidy:
 		season = episodes[1]
 		epnum = episodes[2]
 		if not imdbId in self.imdbData:
+			dp('going online..')
 			# retrieve imdb url
 			if self.use_proxy == True:
 				proxies = {'http':self.proxy}
 			else:
 				proxies = None
-			try:
-				u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes',proxies)
-			except Exception, e:
-				wx.MessageBox("Internet not available from python. Are you behind a proxy?\n%s" % e, "Error", wx.ICON_ERROR)
-				return ""
+			u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes',proxies)
 			# get big string of html page
 			self.imdbData[imdbId] = ''
 			for line in u.readlines():
@@ -255,8 +258,10 @@ class Eptidy:
 		#r = "Staffel " + season + ", Folge " + epnum + ": <.*?>([^<]+)"
 		m = re.search(re.compile(r),self.imdbData[imdbId])
 		if m:
-			t = string.maketrans(u"?:/\\*\"<>|",u"¿⁚⁄⁄⁕″‹›¦")
-			return string.translate(encode(m.group(1),'utf8'),t)
+			result = m.group(1)
+			for old,new in [('?','\xc2\xbf'),('/','\xE2\x81\x84'),('\\','\xE2\x88\x96'),('*','\xE2\x88\x97')]:
+				result = result.replace(old,new)
+			return result
 		else: return ""
 	
 class epEntryBox(wx.Dialog):
@@ -421,12 +426,12 @@ class optionsBox(wx.Dialog):
 		self.ep_list.Check(self.ep_list.GetCount())
 
 class mainFrame(wx.Frame):
-	def test(self,event):
-		print event
 
 	def __init__(self):
 		# Create the back end
 		self.e = Eptidy()
+		self.doFiles = ()
+		self.fileMap = ()
 		wx.Frame.__init__(self, None, -1, "")
 		#MENUBAR
 		
@@ -554,12 +559,10 @@ For example, given "dexter203.avi":
 				files = [a for a in os.listdir(p) if os.path.splitext(a)[1].lower() in extensions]
 			d = self.e.identifyFiles(files)
 			self.doFiles = [z for z in zip(d[0],*d[1]) if not None in z]
-			#self.text_ctrl_3.Remove(0,self.text_ctrl_3.GetLastPosition())
-			#self.text_ctrl_3.SetInsertionPoint(0)
 			
 			if self.doFiles:
 				entries = zip(*self.doFiles)[0]
-				self.eplist.Set(entries) #self.text_ctrl_3.WriteText('\n'.join(zip(*self.doFiles)[0]))
+				self.eplist.Set(entries)
 				[self.eplist.Check(i) for i in range(len(entries))]
 			else: self.eplist.Set([])
 			self.status.SetStatusText("Ready")
@@ -571,6 +574,10 @@ For example, given "dexter203.avi":
 		self.status.SetStatusText("Processing...")
 		namePattern = self.namepatts.GetValue()
 		self.doFiles = [a for i,a in enumerate(self.doFiles) if self.eplist.IsChecked(i)]
+		if not self.doFiles:
+			wx.MessageBox("No files to process","Error",wx.ICON_ERROR)
+			self.status.SetStatusText("Ready")
+			return
 		preFiles = self.e.parseFiles(self.doFiles)
 		inFiles = zip(*self.doFiles)[0]
 		outFiles = []
@@ -585,17 +592,21 @@ For example, given "dexter203.avi":
 			inFilePath = osp.split(inFiles[file[0]])[0]
 			inFileExt = osp.splitext(inFiles[file[0]])[1]
 			outFiles.append(osp.join(inFilePath,n+inFileExt))
-		self.fileMap = [(a,b) for (a,b) in zip(inFiles,outFiles) if a != b]
+		#self.fileMap = [(a,b) for (a,b) in zip(inFiles,outFiles) if a != b]
+		self.fileMap = zip(inFiles,outFiles)
 		self.eplist.Set(["%s => %s" % x for x in self.fileMap])
-		[self.eplist.Check(i) for i in range(len(self.fileMap))]
+		[self.eplist.Check(i) for i,v in enumerate(self.fileMap) if v[0]!=v[1]]
 		self.e.savePattern(namePattern)
 		self.status.SetStatusText("Ready")
 		self.button_4.SetDefault()
 	
 	def handleRename(self,event):
 		self.status.SetStatusText("Renaming...")
-		for old,new in self.fileMap:
-			os.renames(old,new)
+		if not self.fileMap:
+			wx.MessageBox("No files to rename","Error",wx.ICON_ERROR)
+		else:
+			for old,new in self.fileMap:
+				os.renames(old,new)
 		self.status.SetStatusText("Ready")
 	
 	def Quit(self,event): self.Close()
@@ -607,7 +618,7 @@ class gui(wx.App):
 		wx.InitAllImageHandlers()
 		mf = mainFrame()
 		try:
-			icon = wx.Icon(name='tvi.ico', type=wx.BITMAP_TYPE_ICO)
+			icon = wx.Icon(self.getAppIcon(), type=wx.BITMAP_TYPE_ICO)
 			mf.SetIcon(icon)
 		except:
 			dp('icon not found')
@@ -615,6 +626,14 @@ class gui(wx.App):
 		mf.Show()
 		return 1
 
+	def getAppIcon(self):
+		"""Get the path to the icon resource"""
+		if hasattr(sys,'frozen'):
+			# Running from exe -> load icon from itself...
+			return sys.argv[0]
+		else:
+			# Hope that the .ico file is in same dir...
+			return 'tvi.ico'
 
 if __name__ == "__main__":
 	g = gui(0)
