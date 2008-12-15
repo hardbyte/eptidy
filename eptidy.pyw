@@ -1,7 +1,32 @@
 #!/usr/bin/python
-"""
+__help__ = """
 Eptidy - Tidy up all your tv episodes
 
+Eptidy manages your collection of TV episodes
+by scanning their file names, determining season
+and episode numbers, and retrieving the corresponding
+episode name from IMDB.
+
+You can use this program to organise your
+episodes with your preferred naming convention
+and folder hierachy
+
+Firstly, select a path by typing it in or using
+the browse button, and choose whether you want
+a recursive scan. Press Scan to have Eptidy
+generate a list of all the episodes in that
+location. Type in or select from the drop-down
+list a naming convention (for help on these see
+the naming pattern help option) and press Process.
+After retrieving episode names from IMDB, Eptidy
+will produce a list of proposed renames. Select
+those you wish to make and press Rename Files.
+
+Note: The Process button will remove unchecked
+  entries from its list every time you press it.
+"""
+
+"""
 TODO: 
 * How to use and documentation on project homepage: http://code.google.com/p/eptidy/
 * download cache?
@@ -32,15 +57,26 @@ import wx
 from wx import grid as wxgrid
 import copy
 import string
+import logging
 
+debug = False
 
-debug = True
-def dp(str):
+class EptidyException(Exception):
+	pass
+class InternetNotAvailable(EptidyException):
+	pass
+
+# if debug is on True - all output just goes to stderr, else just log errors.
+logFileName = (debug and [None] or ['log.txt'])[0]
+logLevel = (debug and [logging.DEBUG] or [logging.ERROR])[0]
+logging.basicConfig(level=logLevel, format='%(asctime)s %(levelname)s %(message)s',filename=logFileName)
+logging.info("Starting eptidy")
+
+def dp(str,level=logging.DEBUG):
 	"""Debug Print"""
 	if debug:
-		print(str)
+		logging.log(level,str)
 	
-
 class Show:
 	"""A show object..."""
 	def __init__(self,name,imdb,match,enabled=True,comments=None):
@@ -112,10 +148,16 @@ class Eptidy:
 	def __init__(self):
 		"""Find the location of our eptidy files
 		And load the data from them. Else load defaults"""
-		#try:
-		db = shelve.open(self.fileName)
-		#except Exception, e:
-			#dp('Unable to open file\nError: %s' % e)
+		try:
+			db = shelve.open(self.fileName)
+		except:
+			dp('Unable to open database file: %s \n' % self.fileName)
+			if os.path.exists(self.fileName): 
+				dp("File was found, deleting now")
+				os.remove(self.fileName)
+				self.__init__()
+			return
+	
 		try:
 			self.use_proxy = db['use_proxy']
 		except KeyError:
@@ -214,40 +256,61 @@ class Eptidy:
 		return (files,imdbData)
 		
 	def parseFiles(self,identifiedFiles):
+		"""
+		For a list of files, parse their episode data.
+		"""
 		# determine season and episode number from filename
-		identifiers = map(self.parseFileName,zip(*identifiedFiles)[0])
+		try:
+			identifiers = map(self.parseFileName,zip(*identifiedFiles)[0])
+		except Exception, e:
+			msg = "Couldn't determine season and episode number from filename"
+			dp(msg)
+			raise EptidyException(msg)
 		# produce list of tuples containing all data required for site parsing
-		episodeData = zip(zip(*identifiedFiles)[2],*zip(*identifiers))
+		try:
+			episodeData = zip(zip(*identifiedFiles)[2],*zip(*identifiers))
+		except Exception, e:
+			msg = "Couldn't produce list of tuples containing all data required for site parsing"
+			dp(msg)
+			raise EptidyException(msg)
+		
 		# get episode name for each item
 		try:
 			names = map(self.getEpName,episodeData)
 		except Exception, e: #This should be a specific exception
 			if e is not None:
 				wx.MessageBox("Error: %s" % e, "Error", wx.ICON_ERROR)
-			return None
+			if not isinstance(e,InternetNotAvailable):
+				return None
+			names = ['']*len(episodeData)
 		# concatenate episode names to season numbers and episode numbers
 		results = zip(zip(*identifiedFiles)[1],names,*zip(*identifiers))
 		return results
 	
 	def getEpName(self,episodes):
+		'''Given a tuple (IMDB id, season, episode), return
+		episode name retrieved from IMDB
 		'''
-			Given a tuple (IMDB id, season, episode), return
-			episode name retrieved from IMDB
-		'''
-		dp('getting ep names')
+		dp('trying to get ep name.')
 		if None in episodes: return None
 		
-		imdbId = episodes[0]
-		season = episodes[1]
-		epnum = episodes[2]
+		imdbId,season,epnum = episodes
+
 		if not imdbId in self.imdbData:
 			dp('going online..')
 			# retrieve imdb url
 			if self.use_proxy == True:
-				proxies = {'http':self.proxy}
+				if not self.proxy.startswith('http://'):
+					self.proxy = 'http://' + self.proxy
+				prox = {'http':self.proxy}
 			else:
-				proxies = None
-			u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes',proxies)
+				prox = None
+			try:
+				u = urllib.urlopen(self.imdbBaseAddress + imdbId + '/episodes',proxies=prox)
+			except Exception, e:
+				dp('Internet not available\nError was: %s' % e)
+				raise InternetNotAvailable("Internet is not working for us...")
+			
 			# get big string of html page
 			self.imdbData[imdbId] = ''
 			for line in u.readlines():
@@ -261,8 +324,11 @@ class Eptidy:
 			result = m.group(1)
 			for old,new in [('?','\xc2\xbf'),('/','\xE2\x81\x84'),('\\','\xE2\x88\x96'),('*','\xE2\x88\x97')]:
 				result = result.replace(old,new)
+			dp('Episode Name "%s" found' % result)
 			return result
-		else: return ""
+		else:
+			dp('Episode Name not found')
+			return ""
 	
 class epEntryBox(wx.Dialog):
 	def __init__(self,parent,edit=None):
@@ -503,7 +569,7 @@ class mainFrame(wx.Frame):
 		self.SetSizer(rootbox)
 		rootbox.Fit(self)
 		self.Layout()
-		self.Bind(wx.EVT_BUTTON, self.handleHelp, self.pattern_help)
+		self.Bind(wx.EVT_BUTTON, self.handleNp, self.pattern_help)
 		self.Bind(wx.EVT_BUTTON, self.handleScan, self.button_2)
 		self.Bind(wx.EVT_BUTTON, self.handleProcess, self.button_3)
 		self.Bind(wx.EVT_BUTTON, self.handleBrowse, self.button_1)
@@ -511,32 +577,7 @@ class mainFrame(wx.Frame):
 		self.status.SetStatusText("Ready")
 	
 	def handleHelp(self,event):
-		wx.MessageBox('''
-Eptidy
-
-Eptidy manages your collection of TV episodes
-by scanning their file names, determining season
-and episode numbers, and retrieving the corresponding
-episode name from IMDB.
-
-You can use this program to organise your
-episodes with your preferred naming convention
-and folder hierachy
-
-Firstly, select a path by typing it in or using
-the browse button, and choose whether you want
-a recursive scan. Press Scan to have Eptidy
-generate a list of all the episodes in that
-location. Type in or select from the drop-down
-list a naming convention (for help on these see
-the naming pattern help option) and press Process.
-After retrieving episode names from IMDB, Eptidy
-will produce a list of proposed renames. Select
-those you wish to make and press Rename Files.
-
-Note: The Process button will remove unchecked
-  entries from its list every time you press it.
-		''',"Eptidy Help",wx.ICON_INFORMATION)
+		wx.MessageBox(__help__,"Eptidy Help",wx.ICON_INFORMATION)
 	
 	def handleNp(self,event):
 		wx.MessageBox('''
@@ -560,10 +601,10 @@ For example, given "dexter203.avi":
 	def handleAbout(self,event):
 		info = wx.AboutDialogInfo()
 		info.SetName("Eptidy")
-		info.SetDevelopers(["Og","Brian"])
+		info.SetDevelopers(["Og: ogtifs+eptidy@gmail.com","Brian: hardbyte+eptidy@gmail.com","With thanks to Hamish, Kieran and Alex"])
 		info.SetDescription("A program to flexibly organise your TV episodes")
 		info.SetVersion(__version__)
-		info.SetCopyright("Copyright (C) 2008 BOG Enterprises") # :-p i like :D
+		info.SetCopyright("Copyright (C) 2008 BOG Enterprises")
 		info.SetLicense("GNU General Public License v3.0")
 		info.SetWebSite("http://code.google.com/p/eptidy/")
 		wx.AboutBox(info)
@@ -615,11 +656,18 @@ For example, given "dexter203.avi":
 		self.status.SetStatusText("Processing...")
 		namePattern = self.namepatts.GetValue()
 		self.doFiles = [a for i,a in enumerate(self.doFiles) if self.eplist.IsChecked(i)]
-		if not self.doFiles:
+		if self.doFiles is None:
 			wx.MessageBox("No files to process","Error",wx.ICON_ERROR)
 			self.status.SetStatusText("Ready")
 			return
+		dp('Parsing files...')
+		
+		# This can fail if internet is not working
 		preFiles = self.e.parseFiles(self.doFiles)
+		if preFiles is None:
+			dp("Parsing error occured.")
+			return
+		dp('Processing "%s" files.' % preFiles)
 		inFiles = zip(*self.doFiles)[0]
 		outFiles = []
 		for file in enumerate(preFiles):

@@ -2,7 +2,7 @@
 # Installer and installer maker for eptidy...
 # Make a windows executable with: 
 # python setup.py bdist_wininst --bitmap tv_icon.bmp --install-script linking.py
-# Make a standalone windows exe with: python setup.py py2exe
+# Make a standalone windows exe with: python setup.py py2exe --packages encodings
 # Make a debian or rpm in a similar way.
 
 # Tasks:
@@ -64,7 +64,7 @@ setup(name = 'eptidy',
 	  zipfile = None,
 	  windows = [
 	  {
-	  	'script': "eptidy.py",
+	  	'script': "eptidy.pyw",
 	  	'icon_resources':[(0,'tvi.ico')],
 	  	'other_resources':[(24, 1, manifest_template)],
 
